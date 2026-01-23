@@ -9,7 +9,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bitfinexcom/miningos-tpl-wrk-electricity.git"
+    "url": "git+https://github.com/tetherto/miningos-tpl-wrk-electricity.git"
   },
   "engine": {
     "node": ">=20.0"
