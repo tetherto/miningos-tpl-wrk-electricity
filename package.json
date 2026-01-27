@@ -1,0 +1,35 @@
+{
+  "name": "miningos-tpl-wrk-electricity",
+  "version": "0.0.1",
+  "description": "MiningOS Template Electricity",
+  "keywords": [
+    "tether"
+  ],
+  "author": "Tether",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tetherto/miningos-tpl-wrk-electricity.git"
+  },
+  "engine": {
+    "node": ">=20.0"
+  },
+  "scripts": {
+    "lint": "standard",
+    "lint:fix": "standard --fix",
+    "test": "npm run lint && NODE_ENV=test brittle tests/*.js",
+    "test:coverage": "brittle --coverage tests/{,**/}*.test.js"
+  },
+  "dependencies": {
+    "async": "3.2.6",
+    "bfx-facs-scheduler": "git+https://github.com/bitfinexcom/bfx-facs-scheduler.git",
+    "bfx-svc-boot-js": "git+https://github.com/bitfinexcom/bfx-svc-boot-js.git",
+    "mingo": "6.4.6",
+    "tether-wrk-base": "git+https://github.com/tetherto/tether-wrk-base.git"
+  },
+  "devDependencies": {
+    "brittle": "3.16.3",
+    "miningos-mock-control-service": "git+https://github.com/tetherto/miningos-mock-control-service.git",
+    "standard": "17.1.2"
+  }
+}
