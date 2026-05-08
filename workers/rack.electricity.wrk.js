@@ -1,6 +1,6 @@
 'use strict'
 
-const TetherWrkBase = require('tether-wrk-base/workers/base.wrk.tether')
+const TetherWrkBase = require('@tetherto/tether-wrk-base/workers/base.wrk.tether')
 const async = require('async')
 const mingo = require('mingo')
 
@@ -33,10 +33,10 @@ class WrkElectricityRack extends TetherWrkBase {
     }
 
     this.setInitFacs([
-      ['fac', 'bfx-facs-scheduler', '0', 'f2', {}, -10],
+      ['fac', '@bitfinex/bfx-facs-scheduler', '0', 'f2', {}, -10],
       [
         'fac',
-        'hp-svc-facs-store',
+        '@tetherto/hp-svc-facs-store',
         's1',
         's1',
         {
