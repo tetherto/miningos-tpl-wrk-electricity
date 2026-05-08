@@ -1,245 +1,161 @@
 'use strict'
 
 const test = require('brittle')
-const WrkElectricityRack = require('../workers/rack.electricity.wrk')
+const path = require('path')
 
-test('WrkElectricityRack: throws error when rack is undefined', (t) => {
-  const conf = {}
-  const ctx = {}
-  t.exception(() => {
-    const instance = new WrkElectricityRack(conf, ctx)
-    return instance
-  }, 'should throw ERR_PROC_RACK_UNDEFINED when rack is undefined')
+const baseModulePath = require.resolve('@tetherto/tether-wrk-base/workers/base.wrk.tether')
+const workerModulePath = path.resolve(__dirname, '../workers/rack.electricity.wrk.js')
+
+class MockBase {
+  constructor (conf, ctx) {
+    this.conf = conf
+    this.ctx = ctx
+    this.wtype = 'wrk'
+    this.data = {}
+    this.net_r0 = { rpcServer: { respond: () => {} }, handleReply: async () => null }
+  }
+
+  init () {}
+
+  start () {}
+
+  setInitFacs (facs) {
+    this._initFacs = facs
+  }
+
+  _start (cb) {
+    cb()
+  }
+}
+
+const loadWorker = () => {
+  require.cache[baseModulePath] = {
+    id: baseModulePath,
+    filename: baseModulePath,
+    loaded: true,
+    exports: MockBase
+  }
+  delete require.cache[workerModulePath]
+  return require(workerModulePath)
+}
+
+test('WrkElectricityRack: constructor validates rack and initializes', (t) => {
+  const WrkElectricityRack = loadWorker()
+
+  t.exception(() => new WrkElectricityRack({}, {}), /ERR_PROC_RACK_UNDEFINED/)
+
+  const instance = new WrkElectricityRack({}, { rack: 'rack-a', storePrimaryKey: 'pk' })
+  t.is(instance.prefix, 'wrk-rack-a')
+  t.alike(instance.cache, {
+    futureLogs: {},
+    spotPriceForecast: [],
+    nextHourEnergyCost: 0,
+    hashpricePerHour: 0,
+    nextHourRevenue: 0,
+    nextHourShouldMine: false,
+    hashrate: 0,
+    consumption: 0,
+    btcFees: 0,
+    btcFeesChange: 0
+  })
+  t.is(instance._initFacs[1][4].storePrimaryKey, 'pk')
+  t.is(instance._initFacs[1][4].storeDir, 'store/rack-a-db')
 })
 
-test('WrkElectricityRack: initializes with rack context', (t) => {
-  const conf = {}
-  const ctx = { rack: 'test-rack' }
-  let initCalled = false
-  let startCalled = false
+test('WrkElectricityRack: _start wires settings db and rpc handler', async (t) => {
+  const WrkElectricityRack = loadWorker()
+  const instance = new WrkElectricityRack({}, { rack: 'rack-a' })
 
-  class MockWrkElectricityRack extends WrkElectricityRack {
-    init () {
-      initCalled = true
-      super.init()
-    }
-
-    start () {
-      startCalled = true
-    }
-  }
-
-  try {
-    const instance = new MockWrkElectricityRack(conf, ctx)
-    t.ok(initCalled, 'should call init')
-    t.ok(startCalled, 'should call start')
-    return instance
-  } catch (e) {
-    t.ok(initCalled || startCalled, 'should attempt initialization')
-  }
-})
-
-test('WrkElectricityRack: _projection filters data correctly', (t) => {
-  const conf = {}
-  const ctx = { rack: 'test-rack' }
-  const data = [
-    { id: 1, name: 'test1', value: 10 },
-    { id: 2, name: 'test2', value: 20 }
-  ]
-
-  class TestWrkElectricityRack extends WrkElectricityRack {}
-
-  try {
-    const instance = new TestWrkElectricityRack(conf, ctx)
-    const result = instance._projection(data, { name: 1 })
-    t.is(result.length, 2, 'should return all items')
-    t.ok(result[0].name, 'should include name field')
-    t.ok(!result[0].id, 'should exclude id field when not in fields')
-  } catch (e) {
-    t.pass('projection test skipped due to initialization requirements')
-  }
-})
-
-test('WrkElectricityRack: getMargin returns margin from settings', async (t) => {
-  const conf = {}
-  const ctx = { rack: 'test-rack' }
-  const mockMargin = 15
-
-  class TestWrkElectricityRack extends WrkElectricityRack {
-    async getWrkSettings () {
-      return { margin: mockMargin }
-    }
-  }
-
-  try {
-    const instance = new TestWrkElectricityRack(conf, ctx)
-    const result = await instance.getMargin({})
-    t.is(result, mockMargin, 'should return margin from settings')
-  } catch (e) {
-    t.pass('getMargin test skipped due to initialization requirements')
-  }
-})
-
-test('WrkElectricityRack: getMargin returns 0 when margin not set', async (t) => {
-  const conf = {}
-  const ctx = { rack: 'test-rack' }
-
-  class TestWrkElectricityRack extends WrkElectricityRack {
-    async getWrkSettings () {
-      return {}
+  let readyCalled = false
+  const subResult = { ns: 'settings' }
+  instance.store_s1 = {
+    getBee: async (opts, enc) => {
+      t.alike(opts, { name: 'electricity' })
+      t.alike(enc, { keyEncoding: 'binary' })
+      return {
+        ready: async () => { readyCalled = true },
+        sub: (name) => {
+          t.is(name, 'settings')
+          return subResult
+        }
+      }
     }
   }
 
-  try {
-    const instance = new TestWrkElectricityRack(conf, ctx)
-    const result = await instance.getMargin({})
-    t.is(result, 0, 'should return 0 when margin is not set')
-  } catch (e) {
-    t.pass('getMargin test skipped due to initialization requirements')
+  let registeredName = null
+  let registeredHandler = null
+  instance.net_r0 = {
+    rpcServer: {
+      respond: (name, handler) => {
+        registeredName = name
+        registeredHandler = handler
+      }
+    },
+    handleReply: async (name, req) => ({ name, req, ok: true })
   }
+
+  await new Promise((resolve, reject) => {
+    instance._start((err) => {
+      if (err) return reject(err)
+      resolve()
+    })
+  })
+
+  t.ok(readyCalled)
+  t.is(instance.settings, subResult)
+  t.is(registeredName, 'getWrkExtData')
+  const rpcResp = await registeredHandler({ query: { key: 'margin' } })
+  t.alike(rpcResp, { name: 'getWrkExtData', req: { query: { key: 'margin' } }, ok: true })
 })
 
-test('WrkElectricityRack: getWrkExtData throws error for missing query', async (t) => {
-  const conf = {}
-  const ctx = { rack: 'test-rack' }
+test('WrkElectricityRack: _projection and getMargin', async (t) => {
+  const WrkElectricityRack = loadWorker()
+  const instance = new WrkElectricityRack({}, { rack: 'rack-a' })
 
-  class TestWrkElectricityRack extends WrkElectricityRack {}
+  const projected = instance._projection(
+    [{ id: 1, name: 'n1', value: 10 }, { id: 2, name: 'n2', value: 20 }],
+    { name: 1 }
+  )
 
-  try {
-    const instance = new TestWrkElectricityRack(conf, ctx)
-    await t.exception(async () => {
-      await instance.getWrkExtData({})
-    }, 'should throw ERR_QUERY_INVALID when query is missing')
-  } catch (e) {
-    t.pass('getWrkExtData test skipped due to initialization requirements')
-  }
+  t.alike(projected, [{ name: 'n1' }, { name: 'n2' }])
+
+  instance.getWrkSettings = async () => ({ margin: 25 })
+  t.is(await instance.getMargin({}), 25)
+  instance.getWrkSettings = async () => ({})
+  t.is(await instance.getMargin({}), 0)
 })
 
-test('WrkElectricityRack: getWrkExtData throws error for missing key', async (t) => {
-  const conf = {}
-  const ctx = { rack: 'test-rack' }
+test('WrkElectricityRack: getWrkExtData validates req and resolves all keys', async (t) => {
+  const WrkElectricityRack = loadWorker()
+  const instance = new WrkElectricityRack({}, { rack: 'rack-a' })
 
-  class TestWrkElectricityRack extends WrkElectricityRack {}
+  await t.exception(instance.getWrkExtData({}), /ERR_QUERY_INVALID/)
+  await t.exception(instance.getWrkExtData({ query: {} }), /ERR_KEY_INVALID/)
 
-  try {
-    const instance = new TestWrkElectricityRack(conf, ctx)
-    await t.exception(async () => {
-      await instance.getWrkExtData({ query: {} })
-    }, 'should throw ERR_KEY_INVALID when key is missing')
-  } catch (e) {
-    t.pass('getWrkExtData test skipped due to initialization requirements')
-  }
+  instance.getMargin = async () => 1
+  instance.getRevenueEstimates = async () => 2
+  instance.getSpotPrice = async () => 3
+  instance.getStats = async () => 4
+  instance.getCostRevenue = async () => 5
+  instance.getStatsHistory = async () => 6
+  instance.data.custom = 7
+
+  t.is(await instance.getWrkExtData({ query: { key: 'margin' } }), 1)
+  t.is(await instance.getWrkExtData({ query: { key: 'revenue-estimates' } }), 2)
+  t.is(await instance.getWrkExtData({ query: { key: 'spot-price' } }), 3)
+  t.is(await instance.getWrkExtData({ query: { key: 'stats' } }), 4)
+  t.is(await instance.getWrkExtData({ query: { key: 'cost-revenue' } }), 5)
+  t.is(await instance.getWrkExtData({ query: { key: 'stats-history' } }), 6)
+  t.is(await instance.getWrkExtData({ query: { key: 'custom' } }), 7)
 })
 
-test('WrkElectricityRack: getWrkExtData handles margin key', async (t) => {
-  const conf = {}
-  const ctx = { rack: 'test-rack' }
-  const mockMargin = 20
+test('WrkElectricityRack: no-op data methods return undefined', async (t) => {
+  const WrkElectricityRack = loadWorker()
+  const instance = new WrkElectricityRack({}, { rack: 'rack-a' })
 
-  class TestWrkElectricityRack extends WrkElectricityRack {
-    async getMargin () {
-      return mockMargin
-    }
-  }
-
-  try {
-    const instance = new TestWrkElectricityRack(conf, ctx)
-    const result = await instance.getWrkExtData({ query: { key: 'margin' } })
-    t.is(result, mockMargin, 'should return margin value')
-  } catch (e) {
-    t.pass('getWrkExtData margin test skipped due to initialization requirements')
-  }
-})
-
-test('WrkElectricityRack: getWrkExtData handles default key fallback', async (t) => {
-  const conf = {}
-  const ctx = { rack: 'test-rack' }
-  const mockData = { customKey: 'customValue' }
-
-  class TestWrkElectricityRack extends WrkElectricityRack {
-    constructor (conf, ctx) {
-      super(conf, ctx)
-      this.data = mockData
-    }
-  }
-
-  try {
-    const instance = new TestWrkElectricityRack(conf, ctx)
-    const result = await instance.getWrkExtData({ query: { key: 'customKey' } })
-    t.is(result, 'customValue', 'should return value from this.data for unknown keys')
-  } catch (e) {
-    t.pass('getWrkExtData default key test skipped due to initialization requirements')
-  }
-})
-
-test('WrkElectricityRack: getWrkExtData handles all query keys', async (t) => {
-  const conf = {}
-  const ctx = { rack: 'test-rack' }
-  const keys = [
-    'revenue-estimates',
-    'spot-price',
-    'stats',
-    'cost-revenue',
-    'stats-history'
-  ]
-
-  class TestWrkElectricityRack extends WrkElectricityRack {
-    async getRevenueEstimates () { return [] }
-    async getSpotPrice () { return [] }
-    async calcCostAndRevenue () { return {} }
-    async getStats () { return {} }
-    async getCostRevenue () { return [] }
-    async getStatsHistory () { return [] }
-  }
-
-  try {
-    const instance = new TestWrkElectricityRack(conf, ctx)
-    for (const key of keys) {
-      const result = await instance.getWrkExtData({ query: { key } })
-      t.ok(result !== undefined, `should handle ${key} key`)
-    }
-  } catch (e) {
-    t.pass('getWrkExtData keys test skipped due to initialization requirements')
-  }
-})
-
-test('WrkElectricityRack: saveWrkSettings throws error for invalid entries', async (t) => {
-  const conf = {}
-  const ctx = { rack: 'test-rack' }
-
-  class TestWrkElectricityRack extends WrkElectricityRack {}
-
-  try {
-    const instance = new TestWrkElectricityRack(conf, ctx)
-    await t.exception(async () => {
-      await instance.saveWrkSettings({})
-    }, 'should throw ERR_ENTRIES_INVALID when entries is missing')
-  } catch (e) {
-    t.pass('saveWrkSettings test skipped due to initialization requirements')
-  }
-})
-
-test('WrkElectricityRack: no-op methods return undefined', async (t) => {
-  const conf = {}
-  const ctx = { rack: 'test-rack' }
-  const noOpMethods = [
-    'getRevenueEstimates',
-    'getSpotPrice',
-    'calcCostAndRevenue',
-    'getStats',
-    'getCostRevenue',
-    'getStatsHistory'
-  ]
-
-  class TestWrkElectricityRack extends WrkElectricityRack {}
-
-  try {
-    const instance = new TestWrkElectricityRack(conf, ctx)
-    for (const method of noOpMethods) {
-      const result = await instance[method]({})
-      t.is(result, undefined, `${method} should return undefined (no-op)`)
-    }
-  } catch (e) {
-    t.pass('no-op methods test skipped due to initialization requirements')
-  }
+  t.absent(await instance.getRevenueEstimates({}))
+  t.absent(await instance.getSpotPrice({}))
+  t.absent(await instance.getStats({}))
+  t.absent(await instance.getCostRevenue({}))
+  t.absent(await instance.getStatsHistory({}))
 })
