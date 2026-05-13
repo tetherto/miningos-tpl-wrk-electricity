@@ -1,5 +1,5 @@
 {
-  "name": "miningos-tpl-wrk-electricity",
+  "name": "@tetherto/miningos-tpl-wrk-electricity",
   "version": "1.0.0",
   "description": "MiningOS Template Electricity",
   "keywords": [
