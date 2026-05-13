@@ -33,7 +33,7 @@ class WrkElectricityRack extends TetherWrkBase {
     }
 
     this.setInitFacs([
-      ['fac', '@bitfinex/bfx-facs-scheduler', '0', 'f2', {}, -10],
+      ['fac', '@bitfinex/bfx-facs-scheduler', '0', '0', {}, -10],
       [
         'fac',
         '@tetherto/hp-svc-facs-store',
