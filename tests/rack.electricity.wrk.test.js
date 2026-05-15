@@ -82,13 +82,11 @@ test('WrkElectricityRack: _start wires settings db and rpc handler', async (t) =
     }
   }
 
-  let registeredName = null
-  let registeredHandler = null
+  const rpcRegistrations = []
   instance.net_r0 = {
     rpcServer: {
       respond: (name, handler) => {
-        registeredName = name
-        registeredHandler = handler
+        rpcRegistrations.push({ name, handler })
       }
     },
     handleReply: async (name, req) => ({ name, req, ok: true })
@@ -103,9 +101,16 @@ test('WrkElectricityRack: _start wires settings db and rpc handler', async (t) =
 
   t.ok(readyCalled)
   t.is(instance.settings, subResult)
-  t.is(registeredName, 'getWrkExtData')
-  const rpcResp = await registeredHandler({ query: { key: 'margin' } })
-  t.alike(rpcResp, { name: 'getWrkExtData', req: { query: { key: 'margin' } }, ok: true })
+  t.alike(
+    rpcRegistrations.map((r) => r.name),
+    ['getWrkExtData', 'setWrkExtData']
+  )
+  const getHandler = rpcRegistrations.find((r) => r.name === 'getWrkExtData').handler
+  const getResp = await getHandler({ query: { key: 'margin' } })
+  t.alike(getResp, { name: 'getWrkExtData', req: { query: { key: 'margin' } }, ok: true })
+  const setHandler = rpcRegistrations.find((r) => r.name === 'setWrkExtData').handler
+  const setResp = await setHandler({ query: { key: 'foo' } })
+  t.alike(setResp, { name: 'setWrkExtData', req: { query: { key: 'foo' } }, ok: true })
 })
 
 test('WrkElectricityRack: _projection and getMargin', async (t) => {

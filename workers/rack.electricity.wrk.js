@@ -64,6 +64,9 @@ class WrkElectricityRack extends TetherWrkBase {
           this.net_r0.rpcServer.respond('getWrkExtData', async (req) => {
             return await this.net_r0.handleReply('getWrkExtData', req)
           })
+          this.net_r0.rpcServer.respond('setWrkExtData', async (req) => {
+            return await this.net_r0.handleReply('setWrkExtData', req)
+          })
         }
       ],
       cb
@@ -98,6 +101,10 @@ class WrkElectricityRack extends TetherWrkBase {
   }
 
   async getStatsHistory (req) {
+    // no-op
+  }
+
+  async setWrkExtData (req) {
     // no-op
   }
 
